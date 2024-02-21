@@ -18,6 +18,9 @@ latexdict = ascii.latex.latexdicts['AA']
 latexdict['tabletype'] = 'table*'
 latexdict['tablealign'] = 'htp'
 
+def ndigits(error, extra=1):
+    return int(np.ceil(-np.log10(error))) + extra
+
 def rounded(value, error, extra=1):
     """
     Return the value and error both rounded to the error's first digit
@@ -29,7 +32,7 @@ def rounded(value, error, extra=1):
     if hasattr(value, 'unit'):
         value = value.value
 
-    digit = int(np.ceil(-np.log10(error))) + extra
+    digit = ndigits(error, extra=extra)
     assert np.round(error, digit) != 0
     return np.round(value, digit), np.round(error, digit)#, digit
 
