@@ -1,3 +1,4 @@
+import pylab as pl
 import numpy as np
 import pyradex
 import importlib as imp
@@ -6,10 +7,10 @@ from tqdm.auto import tqdm
 from astropy.table import Table
 import warnings
 
-R = pyradex.Radex(temperature=13*u.K, collider_densities={'h2': 1e3*u.cm**-3}, abundance=1e-8, species='SO.Fine', deltav=70)
+R = pyradex.Radex(temperature=14*u.K, collider_densities={'h2': 1e3*u.cm**-3}, abundance=1e-8, species='SO.Fine', deltav=70)
 
 # 13 = 86.09395	19.314	2_2	1_1	
-# 2 =  99.29987 9.226   2_3 1_2 
+# 2 =  99.29987 9.226   2_3 1_2
 linesel = np.array([2, 13])
 
 so32tbl = Table(names=['Density', 'Temperature', 'Column', 'Tex', 'tau', 'T_B', 'brightness'])
@@ -34,7 +35,7 @@ for density in densities:
                              row32['tau'],
                              row32['T_B'],
                              row32['brightness']])
-            
+
             row21 = tbl[1]
             so21tbl.add_row([density, temperature, column,
                              row21['Tex'],
@@ -49,7 +50,7 @@ so32tbcube = np.empty([nden, ncol, ntem])
 for ind in range(so32tbcube.size):
     ii, jj, kk = np.unravel_index(ind, so32tbcube.shape)
     so32tbcube[ii, jj, kk] = so32tbl[ind]['T_B']
-    
+
 so21tbcube = np.empty([nden, ncol, ntem])
 for ind in range(so21tbcube.size):
     ii, jj, kk = np.unravel_index(ind, so21tbcube.shape)
@@ -103,10 +104,10 @@ freqs_SO, aij_SO, deg_SO, EU_SO, partfunc_SO = lte_molecule.get_molecular_parame
 temperatures = np.linspace(5, 50)*u.K
 for col_this in [5e15, 6e15, 8e15, 1e16, 2e16, 4e16]:
     so32ofT = [lte_molecule.generate_model(nurest_so32, 0*u.km/u.s, 71*u.km/u.s, tex=T,
-                                column=col_this, freqs=freqs_SO, aij=aij_SO, deg=deg_SO, EU=EU_SO, partfunc=partfunc_SO) 
+                                column=col_this, freqs=freqs_SO, aij=aij_SO, deg=deg_SO, EU=EU_SO, partfunc=partfunc_SO)
                for T in temperatures]
     so21ofT = [lte_molecule.generate_model(nurest_so21, 0*u.km/u.s, 71*u.km/u.s, tex=T,
-                                column=col_this, freqs=freqs_SO, aij=aij_SO, deg=deg_SO, EU=EU_SO, partfunc=partfunc_SO) 
+                                column=col_this, freqs=freqs_SO, aij=aij_SO, deg=deg_SO, EU=EU_SO, partfunc=partfunc_SO)
                for T in temperatures]
     so32ofT = np.array(so32ofT)
     #pl.plot(temperatures, so21ofT)
@@ -118,7 +119,7 @@ for col_this in [5e15, 6e15, 8e15, 1e16, 2e16, 4e16]:
 # try to reproduce LTE...
 with warnings.catch_warnings():
     warnings.simplefilter('ignore')
-    rslts = [R(density=1e8, column=6e15, temperature=T) for T in temperatures]
+    rslts = [R(density=1e8, column=1.5e15, temperature=T) for T in temperatures]
 rats = [rs[2]['T_B']/rs[13]['T_B'] for rs in rslts]
 pl.plot(temperatures, rats, linestyle='--')
 colind = np.argmin(np.abs(finegrid_col-6e15))
@@ -132,6 +133,54 @@ pl.xlabel('Temperature [K]')
 pl.xlim(0, 52);
 pl.ylabel("Ratio SO 3(2)-2(1) / 2(2)-1(1)");
 
+observing_centers = [345.05, 343.15, 331.2, 333.1,
+                     259, 261.5, 245.7, 243.8,
+                     86, 88, 98.1, 99.9,
+                     135.8, 137.79, 149.6, 147.8,
+                     217.2, 219.15, 230.5, 232.3,
+                    ]*u.GHz
+# 35.8 - 50
+def check_in_band(freq, bw=1.875*u.GHz):
+    for cc in observing_centers:
+        if (freq > cc - bw / 2) and (freq < cc + bw / 2):
+            return True
+        if (35.8*u.GHz < freq) and (50*u.GHz > freq):
+            return True
+    return False
+
+sel = np.array([check_in_band(frq) for frq in u.Quantity(rslts[10]['frequency'].quantity, u.GHz)])
+
+pl.figure(6).clf()
+for density, temperature, X in [(3, 14, 1e-6), (7, 14, 5e-8), (5, 50, 5e-8)]:
+    so_rslt = R(density=10**density*u.cm**-3, temperature=temperature*u.K, abundance=X, species='SO.fine')
+    pl.plot(so_rslt['frequency'][sel], so_rslt['T_B'][sel], 's', color='black',)
+    pl.plot(so_rslt['frequency'], so_rslt['T_B'], 'o', label=f'T={temperature} K $n=10^{{{density}}}$ X={X:0.1e}')
+    pl.plot(so_rslt['frequency'][2], so_rslt['T_B'][2], 'r+',)
+    pl.plot(so_rslt['frequency'][13], so_rslt['T_B'][13], 'rx',)
+
+pl.xlim(0, 375)
+pl.xlabel("Frequency [GHz]")
+pl.ylabel("T$_B$ [K]")
+
+cs_mod = pyradex.Radex(temperature=14*u.K, collider_densities={'h2': 1e8*u.cm**-3}, abundance=1e-9, species='cs@lique', deltav=70)
+
+cs_rslt = cs_mod()
+
+sel_cs = np.array([check_in_band(frq) for frq in u.Quantity(cs_rslt['frequency'].quantity, u.GHz)])
+
+pl.figure(7).clf()
+for density, temperature, X in [(5, 14, 1.5e-9), (6, 14, 1e-10), (4.5, 50, 5e-9)]:
+    cs_rslt = cs_mod(density=10**density*u.cm**-3, temperature=temperature*u.K, abundance=X)
+    pl.plot(cs_rslt['frequency'][:20], cs_rslt['T_B'][:20], 'o-', label=f'T={temperature} K $n=10^{{{density}}}$ X={X:0.1e}')
+    pl.plot(cs_rslt['frequency'][:20][sel_cs[:20]], cs_rslt['T_B'][:20][sel_cs[:20]], 's', color='black',)
+    pl.plot(cs_rslt['frequency'][1], cs_rslt['T_B'][1], 'rs',)
+
+pl.xlim(0, 375)
+pl.xlabel("Frequency [GHz]")
+pl.ylabel("T$_B$ [K]")
+pl.legend(loc='best')
+pl.savefig("CS_RADEX_models_withobs.png")
+pl.savefig("CS_RADEX_models_withobs.pdf")
 
 # DEBUG
 if False:
@@ -139,11 +188,11 @@ if False:
     pl.imshow(ratiocube_fine[:,:,0], cmap='gray', origin='lower')
     #pl.contour(ratiocube[:,:,0], levels=[4.26,4.87])
     pl.contour(ratiocube_fine[:,:,0], levels=[4.26,4.87])
-    
+
     pl.figure(4).clf()
     pl.imshow(ratiocube[:,:,0], cmap='gray', origin='lower')
     pl.contour(ratiocube[:,:,0], levels=[4.26,4.87])
-    
+
     pl.figure(2).clf()
     pl.imshow(ratiocube[:,:,0], extent=np.log10([mincol, maxcol, mindens, maxdens,]), cmap='gray', origin='lower')
     pl.colorbar()
