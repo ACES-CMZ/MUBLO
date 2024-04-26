@@ -9,7 +9,7 @@ import warnings
 
 R = pyradex.Radex(temperature=14*u.K, collider_densities={'h2': 1e3*u.cm**-3}, abundance=1e-8, species='SO.Fine', deltav=70)
 
-# 13 = 86.09395	19.314	2_2	1_1	
+# 13 = 86.09395	19.314	2_2	1_1
 # 2 =  99.29987 9.226   2_3 1_2
 linesel = np.array([2, 13])
 
@@ -97,7 +97,7 @@ for ii, tem in enumerate((10, 15, 25, 50)):
 # check against LTE solution
 pl.figure(5).clf()
 from pyspeckit.spectrum.models import lte_molecule
-nurest_so32 = 99.29987e9*u.Hz	
+nurest_so32 = 99.29987e9*u.Hz
 nurest_so21 = 86.09395e9*u.Hz
 freqs_SO, aij_SO, deg_SO, EU_SO, partfunc_SO = lte_molecule.get_molecular_parameters(molecule_name=None, molecule_tag=48501,
                                                                       catalog='CDMS', parse_name_locally=False)
@@ -144,23 +144,43 @@ def check_in_band(freq, bw=1.875*u.GHz):
     for cc in observing_centers:
         if (freq > cc - bw / 2) and (freq < cc + bw / 2):
             return True
-        if (35.8*u.GHz < freq) and (50*u.GHz > freq):
-            return True
+        #if (35.8*u.GHz < freq) and (50*u.GHz > freq):
+        #    return True
     return False
 
 sel = np.array([check_in_band(frq) for frq in u.Quantity(rslts[10]['frequency'].quantity, u.GHz)])
 
+so_rslt = R(density=10**5*u.cm**-3, temperature=temperature*u.K, abundance=1e-8, species='SO.fine')
+so_nl = np.array([int(x.split("_")[0]) for x in so_rslt['lowerlevel']] )
+so_jl = np.array([int(x.split("_")[1]) for x in so_rslt['lowerlevel']] )
+so_nu = np.array([int(x.split("_")[0]) for x in so_rslt['upperlevel']] )
+so_ju = np.array([int(x.split("_")[1]) for x in so_rslt['upperlevel']] )
+f1l = so_nl == so_jl - 1
+f2l = so_nl == so_jl
+f3l = so_nl == so_jl + 1
+f1u = so_nu == so_ju - 1
+f2u = so_nu == so_ju
+f3u = so_nu == so_ju + 1
+
 pl.figure(6).clf()
 for density, temperature, X in [(3, 14, 1e-6), (7, 14, 5e-8), (5, 50, 5e-8)]:
     so_rslt = R(density=10**density*u.cm**-3, temperature=temperature*u.K, abundance=X, species='SO.fine')
-    pl.plot(so_rslt['frequency'][sel], so_rslt['T_B'][sel], 's', color='black',)
-    pl.plot(so_rslt['frequency'], so_rslt['T_B'], 'o', label=f'T={temperature} K $n=10^{{{density}}}$ X={X:0.1e}')
+    keep = so_rslt['T_B'] > 0.1
+
+    so_kp = so_rslt[keep&f1l]
+    so_kp.sort('frequency')
+
+    pl.plot(so_kp['frequency'], so_kp['T_B'], '-', label=f'T={temperature} K $n=10^{{{density}}}$ X={X:0.1e}')
+    pl.plot(so_rslt['frequency'][keep&sel&f1l], so_rslt['T_B'][keep&sel&f1l], 's', color='black',)
     pl.plot(so_rslt['frequency'][2], so_rslt['T_B'][2], 'r+',)
     pl.plot(so_rslt['frequency'][13], so_rslt['T_B'][13], 'rx',)
 
 pl.xlim(0, 375)
 pl.xlabel("Frequency [GHz]")
 pl.ylabel("T$_B$ [K]")
+
+pl.legend(loc='best')
+
 
 cs_mod = pyradex.Radex(temperature=14*u.K, collider_densities={'h2': 1e8*u.cm**-3}, abundance=1e-9, species='cs@lique', deltav=70)
 
@@ -169,7 +189,8 @@ cs_rslt = cs_mod()
 sel_cs = np.array([check_in_band(frq) for frq in u.Quantity(cs_rslt['frequency'].quantity, u.GHz)])
 
 pl.figure(7).clf()
-for density, temperature, X in [(5, 14, 1.5e-9), (6, 14, 1e-10), (4.5, 50, 5e-9)]:
+#for density, temperature, X in [(5, 14, 1.5e-9), (6, 14, 1e-10), (4.5, 50, 5e-9)]:
+for density, temperature, X in [(5, 14, 1e-7), (6, 14, 5e-9), (5, 50, 2e-8), (7, 14, 1e-9), ]:
     cs_rslt = cs_mod(density=10**density*u.cm**-3, temperature=temperature*u.K, abundance=X)
     pl.plot(cs_rslt['frequency'][:20], cs_rslt['T_B'][:20], 'o-', label=f'T={temperature} K $n=10^{{{density}}}$ X={X:0.1e}')
     pl.plot(cs_rslt['frequency'][:20][sel_cs[:20]], cs_rslt['T_B'][:20][sel_cs[:20]], 's', color='black',)
