@@ -11,10 +11,16 @@ R = pyradex.Radex(temperature=14*u.K, collider_densities={'h2': 1e3*u.cm**-3}, a
 
 # 13 = 86.09395	19.314	2_2	1_1
 # 2 =  99.29987 9.226   2_3 1_2
-linesel = np.array([2, 13])
+# the rest are B7 transitions
+linesel = np.array([2, 13, 5, 15, 21, 65, 70, 74])
 
 so32tbl = Table(names=['Density', 'Temperature', 'Column', 'Tex', 'tau', 'T_B', 'brightness'])
 so21tbl = Table(names=['Density', 'Temperature', 'Column', 'Tex', 'tau', 'T_B', 'brightness'])
+
+sob7tbls = {}
+so_b7_trans = ('21_10', '32_12', '33_23', '89_78', '87_76', '88_77')
+for trans in so_b7_trans:
+    sob7tbls[trans] = Table(names=['Density', 'Temperature', 'Column', 'Tex', 'tau', 'T_B', 'brightness'])
 
 nden, ncol, ntem = 13, 7, 12
 mindens, maxdens = 1e2, 1e8
@@ -43,8 +49,19 @@ for density in densities:
                              row21['T_B'],
                              row21['brightness']])
 
+            # investigate B7 possibilities
+            for ii, trans in enumerate(so_b7_trans):
+                row = tbl[ii + 2]
+                sob7tbls[trans].add_row([density, temperature, column,
+                                         row['Tex'], row['tau'], row['T_B'],
+                                         row['brightness']])
+
+
 so32tbl.write('RADEX_Model_SO32.ecsv', overwrite=True)
 so21tbl.write('RADEX_Model_SO21.ecsv', overwrite=True)
+
+for trans in so_b7_trans:
+    sob7tbls[trans].write(f'RADEX_Model_SO{trans}.ecsv', overwrite=True)
 
 so32tbcube = np.empty([nden, ncol, ntem])
 for ind in range(so32tbcube.size):
@@ -101,27 +118,27 @@ nurest_so32 = 99.29987e9*u.Hz
 nurest_so21 = 86.09395e9*u.Hz
 freqs_SO, aij_SO, deg_SO, EU_SO, partfunc_SO = lte_molecule.get_molecular_parameters(molecule_name=None, molecule_tag=48501,
                                                                       catalog='CDMS', parse_name_locally=False)
-temperatures = np.linspace(5, 50)*u.K
+temperatures_lin = np.linspace(5, 50)*u.K
 for col_this in [5e15, 6e15, 8e15, 1e16, 2e16, 4e16]:
     so32ofT = [lte_molecule.generate_model(nurest_so32, 0*u.km/u.s, 71*u.km/u.s, tex=T,
                                 column=col_this, freqs=freqs_SO, aij=aij_SO, deg=deg_SO, EU=EU_SO, partfunc=partfunc_SO)
-               for T in temperatures]
+               for T in temperatures_lin]
     so21ofT = [lte_molecule.generate_model(nurest_so21, 0*u.km/u.s, 71*u.km/u.s, tex=T,
                                 column=col_this, freqs=freqs_SO, aij=aij_SO, deg=deg_SO, EU=EU_SO, partfunc=partfunc_SO)
-               for T in temperatures]
+               for T in temperatures_lin]
     so32ofT = np.array(so32ofT)
-    #pl.plot(temperatures, so21ofT)
-    #pl.plot(temperatures, so32ofT)
-    #L, = pl.plot(temperatures, np.array(so32ofT)/np.array(so21ofT), linestyle='--')
-    pl.plot(temperatures[so32ofT > 1.75], (np.array(so32ofT)/np.array(so21ofT))[so32ofT > 1.75], linestyle='-',
+    #pl.plot(temperatures_lin, so21ofT)
+    #pl.plot(temperatures_lin, so32ofT)
+    #L, = pl.plot(temperatures_lin, np.array(so32ofT)/np.array(so21ofT), linestyle='--')
+    pl.plot(temperatures_lin[so32ofT > 1.75], (np.array(so32ofT)/np.array(so21ofT))[so32ofT > 1.75], linestyle='-',
             label=f'{col_this:0.0e} cm$^{{-2}}$')#, color=L.get_color())
 
 # try to reproduce LTE...
 with warnings.catch_warnings():
     warnings.simplefilter('ignore')
-    rslts = [R(density=1e8, column=1.5e15, temperature=T) for T in temperatures]
+    rslts = [R(density=1e8, column=1.5e15, temperature=T) for T in temperatures_lin]
 rats = [rs[2]['T_B']/rs[13]['T_B'] for rs in rslts]
-pl.plot(temperatures, rats, linestyle='--')
+pl.plot(temperatures_lin, rats, linestyle='--')
 colind = np.argmin(np.abs(finegrid_col-6e15))
 pl.plot(finegrid_tem, ratiocube_fine[-1, colind, :], linestyle='--')
 #pl.plot(finegrid_tem, ratiocube_fine[-1, -1, :], linestyle='--')
@@ -222,3 +239,15 @@ if False:
     pl.gca().set_aspect( 1/((np.log10(maxdens)-np.log10(mindens)) / (np.log10(maxcol)-np.log10(mincol)) ))
     pl.ylabel("Density")
     pl.xlabel("Column")
+
+# SO B7 exploration
+pl.figure(8).clf()
+
+col = columns[2]
+for temperature, linestyle in zip(temperatures[2::9], ('-', '--')):
+    for trans in sob7tbls:
+        tb = sob7tbls[trans]
+        sel = (tb['Temperature'] == temperature) & (tb['Column'] == col)
+        pl.plot(tb['Density'][sel], tb['T_B'][sel], label=f'{trans} T={temperature:0.1f}', linestyle=linestyle)
+pl.xscale('log')
+pl.legend(loc='best')
