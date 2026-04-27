@@ -373,6 +373,94 @@ def run_on_cube(cube_path, params, label):
     print(f"  wrote {out_path}")
 
 
+def matched_filter_freq_cube(cube_path, params, out_path=None):
+    """Matched-filter detection spectrum for a FREQ-axis cube (a full
+    spectral window). Uses the fact that the 3D Gaussian template is
+    separable into spatial * spectral: pre-collapse spatially and then
+    cross-correlate with the spectral Gaussian.
+
+    Returns a dict with frequency (Hz), MF flux, and SNR arrays.
+    """
+    hdr = fits.getheader(cube_path)
+    if "FREQ" not in str(hdr.get("CTYPE3", "")).upper():
+        return None
+    nv = hdr["NAXIS3"]
+    crpix = hdr["CRPIX3"]
+    crval = hdr["CRVAL3"]
+    cdelt = hdr["CDELT3"]
+    cunit = str(hdr.get("CUNIT3", "Hz")).lower()
+    scale = 1.0 if cunit.startswith("hz") else 1.0
+    freq_hz = crval + cdelt * (np.arange(nv) + 1 - crpix)  # Hz
+    f_ref = float(np.median(freq_hz))
+    c_kms = 299792.458
+    dv_per_chan = c_kms * abs(cdelt) / f_ref
+
+    wcs_cel = WCS(hdr).celestial
+    ny = hdr["NAXIS2"]
+    nx = hdr["NAXIS1"]
+    y_idx, x_idx = np.mgrid[0:ny, 0:nx]
+    ra2d, dec2d = wcs_cel.wcs_pix2world(x_idx, y_idx, 0)
+
+    _amp, x0, y0, sx, sy, v0, sv, _off = params
+    cosd = np.cos(np.deg2rad(y0))
+    dxa = (ra2d - x0) * cosd * 3600.0
+    dya = (dec2d - y0) * 3600.0
+    Wsp = np.exp(-0.5 * (dxa ** 2 / sx ** 2 + dya ** 2 / sy ** 2)).astype(np.float32)
+
+    # Spectral weight kernel: Gaussian in velocity sampled at dv_per_chan
+    half_chan = int(np.ceil(4.0 * sv / dv_per_chan))
+    kern_ch = np.arange(-half_chan, half_chan + 1)
+    kern_vel = kern_ch * dv_per_chan
+    Wv = np.exp(-0.5 * (kern_vel / sv) ** 2).astype(np.float32)
+
+    data = fits.getdata(cube_path).astype(np.float32)
+    while data.ndim > 3:
+        data = data[0]
+    if data.shape != (nv, ny, nx):
+        raise RuntimeError(f"Unexpected data shape {data.shape} vs {(nv, ny, nx)}")
+
+    data_filled = np.where(np.isfinite(data), data, 0.0)
+
+    # Spatially-weighted 1D spectrum: sum_{y,x} data[:,y,x] * Wsp(y,x)
+    spec_sw = np.einsum("ijk,jk->i", data_filled, Wsp)
+
+    # Cross-correlate with spectral kernel; 'same' to keep length nv.
+    mf = np.convolve(spec_sw, Wv[::-1], mode="same")
+    denom = float((Wsp ** 2).sum() * (Wv ** 2).sum())
+    if denom > 0:
+        mf = mf / denom
+
+    # Noise: stdev of MF spectrum away from any bright line. Conservative:
+    # use median absolute deviation scaled to sigma.
+    mad = np.median(np.abs(mf - np.median(mf)))
+    sigma = 1.4826 * mad if mad > 0 else np.std(mf)
+    snr = mf / sigma if sigma > 0 else np.full_like(mf, np.nan)
+
+    # Also compute velocity-shift relative to cube center frequency (so that
+    # 0 km/s corresponds to freq_hz = f_ref). Useful for human inspection.
+    vel_ref = -c_kms * (freq_hz - f_ref) / f_ref
+
+    if out_path:
+        col_f = fits.Column(name="frequency_hz", format="D", array=freq_hz)
+        col_v = fits.Column(name="vel_relref_kms", format="D", array=vel_ref)
+        col_m = fits.Column(name="flux", format="D", array=mf)
+        col_s = fits.Column(name="snr", format="D", array=snr)
+        hdu = fits.BinTableHDU.from_columns([col_f, col_v, col_m, col_s])
+        hdu.header["FREFHZ"] = (f_ref, "reference frequency (median), Hz")
+        hdu.header["DVCHAN"] = (dv_per_chan, "channel spacing at f_ref, km/s")
+        hdu.header["SIGMA"] = (float(sigma), "robust sigma (1.4826 * MAD)")
+        hdu.writeto(out_path, overwrite=True)
+    return {
+        "freq_hz": freq_hz,
+        "vel_relref_kms": vel_ref,
+        "flux": mf,
+        "snr": snr,
+        "sigma": float(sigma),
+        "f_ref_hz": f_ref,
+        "dv_per_chan_kms": dv_per_chan,
+    }
+
+
 if __name__ == "__main__":
     params = fit_so32()
 
@@ -390,3 +478,28 @@ if __name__ == "__main__":
                      and 'template' not in c and 'mf_spectrum' not in c]
     for cp in b7_line_cubes:
         run_on_cube(cp, params, "B7 per-line")
+
+    # The 8 full spectral window cubes (FREQ axis)
+    full_window_cubes = (
+        sorted(glob.glob(os.path.join(BASE, "b3.spw*.cube.I.pbcor.10kms.fits")))
+        + sorted(glob.glob(os.path.join(BASE, "b7", "*.cube.I.selfcal.pbcor.10kms.fits")))
+    )
+    print(f"\n=== Full-window matched filter on {len(full_window_cubes)} cubes ===")
+    for cp in full_window_cubes:
+        print(f"\n  {os.path.basename(cp)}")
+        try:
+            out_path = cp.replace(".fits", ".gauss3d_fullwin_mf.fits")
+            result = matched_filter_freq_cube(cp, params, out_path=out_path)
+            if result is None:
+                print("    skipped (not FREQ axis)")
+                continue
+            snr = result["snr"]
+            i = int(np.nanargmax(np.where(np.isfinite(snr), snr, -np.inf)))
+            print(f"    f_ref={result['f_ref_hz']/1e9:.3f} GHz, "
+                  f"dv_chan={result['dv_per_chan_kms']:.3f} km/s, "
+                  f"sigma={result['sigma']:.3e}")
+            print(f"    peak SNR={snr[i]:.2f} at f={result['freq_hz'][i]/1e9:.4f} GHz "
+                  f"(vrel={result['vel_relref_kms'][i]:.1f} km/s)")
+            print(f"    wrote {out_path}")
+        except Exception as e:
+            print(f"    FAILED: {e}")
