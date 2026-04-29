@@ -295,21 +295,14 @@ def _safe_hdr_val(v):
     """Return a value safe to put in a FITS header (no NaN)."""
     if v is None:
         return 0.0
-    try:
-        if not np.isfinite(v):
-            return 0.0
-    except Exception:
-        pass
+    if not np.isfinite(v):
+        return 0.0
     return float(v)
 
 
 def run_on_cube(cube_path, params, label):
     print(f"\n=== Matched filter on {os.path.basename(cube_path)} ({label}) ===")
-    try:
-        hdr = fits.getheader(cube_path)
-    except Exception as e:
-        print(f"  CANNOT READ header: {e}")
-        return
+    hdr = fits.getheader(cube_path)
     ctype3 = str(hdr.get("CTYPE3", "")).upper()
     if "FREQ" in ctype3:
         print(f"  SKIP (CTYPE3={ctype3} — broadband cube; run per-line cubes instead)")
@@ -483,23 +476,21 @@ if __name__ == "__main__":
     full_window_cubes = (
         sorted(glob.glob(os.path.join(BASE, "b3.spw*.cube.I.pbcor.10kms.fits")))
         + sorted(glob.glob(os.path.join(BASE, "b7", "*.cube.I.selfcal.pbcor.10kms.fits")))
+        + sorted(glob.glob(os.path.join(BASE, "b9", "*.cube.I.selfcal.pbcor.10kms.fits")))
     )
     print(f"\n=== Full-window matched filter on {len(full_window_cubes)} cubes ===")
     for cp in full_window_cubes:
         print(f"\n  {os.path.basename(cp)}")
-        try:
-            out_path = cp.replace(".fits", ".gauss3d_fullwin_mf.fits")
-            result = matched_filter_freq_cube(cp, params, out_path=out_path)
-            if result is None:
-                print("    skipped (not FREQ axis)")
-                continue
-            snr = result["snr"]
-            i = int(np.nanargmax(np.where(np.isfinite(snr), snr, -np.inf)))
-            print(f"    f_ref={result['f_ref_hz']/1e9:.3f} GHz, "
-                  f"dv_chan={result['dv_per_chan_kms']:.3f} km/s, "
-                  f"sigma={result['sigma']:.3e}")
-            print(f"    peak SNR={snr[i]:.2f} at f={result['freq_hz'][i]/1e9:.4f} GHz "
-                  f"(vrel={result['vel_relref_kms'][i]:.1f} km/s)")
-            print(f"    wrote {out_path}")
-        except Exception as e:
-            print(f"    FAILED: {e}")
+        out_path = cp.replace(".fits", ".gauss3d_fullwin_mf.fits")
+        result = matched_filter_freq_cube(cp, params, out_path=out_path)
+        if result is None:
+            print("    skipped (not FREQ axis)")
+            continue
+        snr = result["snr"]
+        i = int(np.nanargmax(np.where(np.isfinite(snr), snr, -np.inf)))
+        print(f"    f_ref={result['f_ref_hz']/1e9:.3f} GHz, "
+                f"dv_chan={result['dv_per_chan_kms']:.3f} km/s, "
+                f"sigma={result['sigma']:.3e}")
+        print(f"    peak SNR={snr[i]:.2f} at f={result['freq_hz'][i]/1e9:.4f} GHz "
+                f"(vrel={result['vel_relref_kms'][i]:.1f} km/s)")
+        print(f"    wrote {out_path}")

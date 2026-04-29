@@ -67,10 +67,7 @@ def mom0(path, v_lo=V0 - 1.2 * FWHM_V, v_hi=V0 + 1.2 * FWHM_V):
 
 def _safe_hdr(h, key, default=None):
     val = h.get(key, default)
-    try:
-        if val is None or (isinstance(val, float) and not np.isfinite(val)):
-            return default
-    except Exception:
+    if val is None or (isinstance(val, float) and not np.isfinite(val)):
         return default
     return val
 

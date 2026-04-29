@@ -309,11 +309,8 @@ def run_residual_mf(cube_path, template, template_header, template_vel,
     hdu = fits.BinTableHDU.from_columns(cols)
 
     def safe(v):
-        try:
-            if not np.isfinite(v):
-                return 0.0
-        except Exception:
-            pass
+        if not np.isfinite(v):
+            return 0.0
         return float(v)
 
     hdu.header["SIGMA"] = (safe(sigma), "off-signal stdev of flux spectrum")
@@ -615,11 +612,8 @@ def run_residual_mf_fullwindow(cube_path, template, template_header, template_ve
     hdu = fits.BinTableHDU.from_columns(cols)
 
     def safe(v):
-        try:
-            if not np.isfinite(v):
-                return 0.0
-        except Exception:
-            pass
+        if not np.isfinite(v):
+            return 0.0
         return float(v)
 
     hdu.header["SIGMA"] = (safe(sigma), "off-signal stdev of flux spectrum")
@@ -712,10 +706,8 @@ if __name__ == "__main__":
     full_window_cubes = (
         sorted(glob.glob(os.path.join(BASE, "b3.spw*.cube.I.pbcor.10kms.fits")))
         + sorted(glob.glob(os.path.join(BASE, "b7", "*.cube.I.selfcal.pbcor.10kms.fits")))
+        + sorted(glob.glob(os.path.join(BASE, "b9", "*.cube.I.selfcal.pbcor.10kms.fits")))
     )
     print(f"\n=== Combined residual template MF on {len(full_window_cubes)} full windows ===")
     for cp in full_window_cubes:
-        try:
-            run_residual_mf_fullwindow(cp, template, t_hdr, t_vel)
-        except Exception as e:
-            print(f"   FAILED on {cp}: {e}")
+        run_residual_mf_fullwindow(cp, template, t_hdr, t_vel)

@@ -123,10 +123,7 @@ def load_cube_3d(path):
 
 def safe_hdr(h, key, default=None):
     v = h.get(key, default)
-    try:
-        if v is None or (isinstance(v, float) and not np.isfinite(v)):
-            return default
-    except Exception:
+    if v is None or (isinstance(v, float) and not np.isfinite(v)):
         return default
     return v
 
@@ -523,13 +520,10 @@ if __name__ == "__main__":
     print(f"Full-window cubes: {len(full_window_cubes)}")
     spectrum_pngs = []
     for cp in full_window_cubes:
-        try:
-            out = plot_fullwindow_spectrum(cp, GAL)
-            if out:
-                spectrum_pngs.append(out)
-                print(f"  spectrum -> {os.path.basename(out)}")
-        except Exception as e:
-            print(f"  spectrum FAILED for {cp}: {e}")
+        out = plot_fullwindow_spectrum(cp, GAL)
+        if out:
+            spectrum_pngs.append(out)
+            print(f"  spectrum -> {os.path.basename(out)}")
 
     # 2) Per-line moment maps for all per-line cubes
     line_cubes = []
@@ -550,13 +544,10 @@ if __name__ == "__main__":
     print(f"Per-line cubes: {len(line_cubes)}")
     moment_pngs = []
     for cube in line_cubes:
-        try:
-            out = plot_moment_maps(cube, GAL)
-            if out:
-                moment_pngs.append(out)
-                print(f"  moments -> {os.path.basename(out)}")
-        except Exception as e:
-            print(f"  moments FAILED for {cube}: {e}")
+        out = plot_moment_maps(cube, GAL)
+        if out:
+            moment_pngs.append(out)
+            print(f"  moments -> {os.path.basename(out)}")
 
     # Also moments of model and residual cubes (both SO and CS) for inspection
     for extra in [
@@ -566,13 +557,10 @@ if __name__ == "__main__":
         os.path.join(BASE, "CS21_residual3D_gaussian_solocked.fits"),
     ]:
         if os.path.exists(extra):
-            try:
-                out = plot_moment_maps(extra, GAL)
-                if out:
-                    moment_pngs.append(out)
-                    print(f"  moments -> {os.path.basename(out)}")
-            except Exception as e:
-                print(f"  moments FAILED for {extra}: {e}")
+            out = plot_moment_maps(extra, GAL)
+            if out:
+                moment_pngs.append(out)
+                print(f"  moments -> {os.path.basename(out)}")
 
     # 3) Residual-template matched-filter spectra — ONLY for the 8
     # full spectral windows (same as the Gaussian-template section).
@@ -580,12 +568,9 @@ if __name__ == "__main__":
     for cube in full_window_cubes:
         mf_path = cube.replace(".fits", ".resid_fullwin_mf.fits")
         if os.path.exists(mf_path):
-            try:
-                out = plot_resid_fullwin(mf_path, cube, GAL)
-                residmf_pngs.append(out)
-                print(f"  resid_mf -> {os.path.basename(out)}")
-            except Exception as e:
-                print(f"  resid_mf FAILED for {cube}: {e}")
+            out = plot_resid_fullwin(mf_path, cube, GAL)
+            residmf_pngs.append(out)
+            print(f"  resid_mf -> {os.path.basename(out)}")
         else:
             print(f"  no resid fullwin MF for {os.path.basename(cube)} — run residual_matched_filter.py first")
 
@@ -597,27 +582,11 @@ if __name__ == "__main__":
         mask_diag_pngs.append(profile_png)
 
     # 5) RGB composites — rebuild so they stay in sync with template/profile.
-    try:
-        import subprocess
-        subprocess.run(["python", os.path.join(BASE, "make_rgb_overlay.py")],
-                        check=True)
-    except Exception as e:
-        print(f"  RGB overlay FAILED: {e}")
-    try:
-        subprocess.run(["python", os.path.join(BASE, "make_rgb_bowshock.py")],
-                        check=True)
-    except Exception as e:
-        print(f"  RGB bow-shock-emphasis FAILED: {e}")
-    try:
-        subprocess.run(["python", os.path.join(BASE, "make_data_model_residual.py")],
-                        check=True)
-    except Exception as e:
-        print(f"  data/model/residual FAILED: {e}")
-    try:
-        subprocess.run(["python", os.path.join(BASE, "make_radial_profiles.py")],
-                        check=True)
-    except Exception as e:
-        print(f"  radial profiles FAILED: {e}")
+    import subprocess
+    subprocess.run(["python", os.path.join(BASE, "make_rgb_overlay.py")], check=True)
+    subprocess.run(["python", os.path.join(BASE, "make_rgb_bowshock.py")], check=True)
+    subprocess.run(["python", os.path.join(BASE, "make_data_model_residual.py")], check=True)
+    subprocess.run(["python", os.path.join(BASE, "make_radial_profiles.py")], check=True)
     rgb_png = os.path.join(GAL, "MUBLO_RGB_bowshock.png")
     rgb_bow_png = os.path.join(GAL, "MUBLO_RGB_bowshock_emphasis.png")
     dmr_png = os.path.join(GAL, "MUBLO_data_model_residual.png")
@@ -625,11 +594,8 @@ if __name__ == "__main__":
 
     # Clean up old per-line spectrum PNGs from earlier runs
     for old in glob.glob(os.path.join(GAL, "*.spectrum.png")):
-        try:
-            os.remove(old)
-            print(f"  removed stale {os.path.basename(old)}")
-        except Exception:
-            pass
+        os.remove(old)
+        print(f"  removed stale {os.path.basename(old)}")
 
     # 7) Band 9 matched-filter spectra (if process_band9.py has been run)
     band9_pngs = sorted(glob.glob(os.path.join(GAL, "B9_matched_filter_*.png")))

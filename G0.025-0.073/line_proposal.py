@@ -37,16 +37,11 @@ gijs_list = ['CO', 'O2', 'NO', 'N2', 'HOC+', 'NO+', 'H3O+', 'OH', 'HCO+', 'H2O',
 
 for molname in gijs_list:
     if '+' in molname:
-        molname = molname.replace("+", "\+")
-    try:
-        qq = CDMS.query_lines(30*u.GHz, 1000*u.GHz, molecule=molname, parse_name_locally=True)
-        sel = np.array([check_in_band(frq) for frq in qq['FREQ'].quantity])
-        print(molname)
-        print(qq[sel])
-    except Exception as ex:
-        print("#################")
-        print(molname)
-        print(ex)
+        molname = molname.replace("+", "\\+")
+    qq = CDMS.query_lines(30*u.GHz, 1000*u.GHz, molecule=molname, parse_name_locally=True)
+    sel = np.array([check_in_band(frq) for frq in qq['FREQ'].quantity])
+    print(molname)
+    print(qq[sel])
 
 for molname, molid in molecules.items():
     qq = CDMS.query_lines(30*u.GHz, 1000*u.GHz, molecule=molid)

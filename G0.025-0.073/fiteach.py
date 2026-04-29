@@ -93,23 +93,12 @@ for line_name, cube_file in lines.items():
             )
             
             # Fit the model, catching only fitting convergence errors
-            try:
-                with warnings.catch_warnings():
-                    warnings.simplefilter('ignore')
-                    g_fit = fit_g(g_init, spec.spectral_axis, spec)
-                
-                # Store the fitted parameters
-                amplitude_map[y, x] = g_fit.amplitude
-                centroid_map[y, x] = g_fit.mean
-                width_map[y, x] = g_fit.stddev
-                
-            except (ValueError, RuntimeError, np.linalg.LinAlgError) as e:
-                # If fit fails due to convergence issues or invalid values, store NaN
-                # but let other exceptions (like AttributeError, KeyError, etc.) propagate
-                print(f"Warning: Fit failed at ({y}, {x}): {e}")
-                amplitude_map[y, x] = np.nan * vcube.unit
-                centroid_map[y, x] = np.nan * u.km / u.s
-                width_map[y, x] = np.nan * u.km / u.s
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore')
+                g_fit = fit_g(g_init, spec.spectral_axis, spec)
+            amplitude_map[y, x] = g_fit.amplitude
+            centroid_map[y, x] = g_fit.mean
+            width_map[y, x] = g_fit.stddev
     
     print(f"Fitting complete for {line_name}. Saving results...")
     

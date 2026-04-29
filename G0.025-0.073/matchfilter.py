@@ -17,7 +17,7 @@ import regions
 import pylab as pl
 import pyspeckit
 
-cube = SpectralCube.read('spw31.cube.I.pbcor.mublo.SO32.fits')
+cube = SpectralCube.read('b3.spw31.cube.I.pbcor.mublo.SO32.fits')
 reg = regions.Regions.read('mublo_cutout_circle_tight.reg')[0]
 scube = cube.subcube_from_regions([reg])
 
