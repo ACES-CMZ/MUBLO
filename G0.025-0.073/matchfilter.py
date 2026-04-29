@@ -146,7 +146,7 @@ def matched_filter(scube, mcube):
 
 
 # Apply matched filter to other cubes
-for fn in glob.glob("*cube.I.pbcor.10kms.fits"):
+for fn in glob.glob("*cube.I.pbcor.10kms.fits") + glob.glob("b9/*cube.I.selfcal.pbcor.10kms.fits"):
     cube = SpectralCube.read(fn)
     scube = cube.subcube_from_regions([reg])
 

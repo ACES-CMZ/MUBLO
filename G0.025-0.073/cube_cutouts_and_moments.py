@@ -17,7 +17,7 @@ dask.config.set(scheduler='threads', num_workers=8)
 lines = {'SO2211': 86.09395, 'H13CN10': 86.33992, 'H13CO+10': 86.7543, 'SiO21': 86.84696, 'HNCO4-3':87.925238, 'CS21': 97.98095, 'SO2735-826': 97.70234, 'OCS8-7': 97.3012085, 'HCN1-0': 88.6316023, 'SO32': 99.29987, 'H40a': 99.02295, 'CS76': 342.88285, 'SO8877': 344.31061, '13CO32': 330.58796, '12CO32': 345.796}
 
 reg = regions.Regions.read('mublo_cutout_square.reg')[0]
-for fn in (glob.glob("*cube.I.pbcor.fits") + glob.glob("*cube.I.selfcal.pbcor.fits"))[::-1]:
+for fn in glob.glob('b9/*cube.I.selfcal.pbcor.fits') + (glob.glob("*cube.I.pbcor.fits") + glob.glob("*cube.I.selfcal.pbcor.fits"))[::-1]:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         cube = SpectralCube.read(fn, use_dask=True)

@@ -456,7 +456,8 @@ def plot_resid_fullwin(mf_path, cube_path, outdir):
 
 
 def write_index_html(spectrum_pngs, moment_pngs, residmf_pngs, mask_diag_pngs, outdir,
-                      rgb_png=None, rgb_bow_png=None, dmr_png=None, radial_png=None):
+                      rgb_png=None, rgb_bow_png=None, dmr_png=None, radial_png=None,
+                      band9_pngs=None):
     index = os.path.join(outdir, "index.html")
     with open(index, "w") as fh:
         fh.write("<html><head><title>MUBLO gallery</title>")
@@ -495,6 +496,11 @@ def write_index_html(spectrum_pngs, moment_pngs, residmf_pngs, mask_diag_pngs, o
         for p in spectrum_pngs:
             rel = os.path.basename(p)
             fh.write(f'<section><h3>{rel}</h3><img src="{rel}"/></section>')
+        if band9_pngs:
+            fh.write("<h2>Band 9 matched-filter spectra (Gaussian template)</h2>")
+            for p in band9_pngs:
+                rel = os.path.basename(p)
+                fh.write(f'<section><h3>{rel}</h3><img src="{rel}"/></section>')
         if residmf_pngs:
             fh.write("<h2>Residual-template matched-filter spectra (bow-shock)</h2>")
             for p in residmf_pngs:
@@ -530,6 +536,7 @@ if __name__ == "__main__":
     for pat in [
         os.path.join(BASE, "b3.spw*.cube.I.pbcor.mublo.*.fits"),
         os.path.join(BASE, "b7", "*.cube.I.selfcal.pbcor.mublo.*.fits"),
+        os.path.join(BASE, "b9.spw*.cube.I.selfcal.pbcor.mublo.*.fits"),
     ]:
         for p in sorted(glob.glob(pat)):
             bn = os.path.basename(p)
@@ -624,10 +631,15 @@ if __name__ == "__main__":
         except Exception:
             pass
 
+    # 7) Band 9 matched-filter spectra (if process_band9.py has been run)
+    band9_pngs = sorted(glob.glob(os.path.join(GAL, "B9_matched_filter_*.png")))
+    print(f"Band 9 matched-filter spectra: {len(band9_pngs)}")
+
     idx = write_index_html(spectrum_pngs, moment_pngs, residmf_pngs,
                            mask_diag_pngs, GAL, rgb_png=rgb_png,
                            rgb_bow_png=rgb_bow_png, dmr_png=dmr_png,
-                           radial_png=radial_png)
+                           radial_png=radial_png, band9_pngs=band9_pngs)
     print(f"\nWrote {len(spectrum_pngs)} full-window spectra, {len(moment_pngs)} moment panels, "
-          f"{len(residmf_pngs)} residual-MF spectra, {len(mask_diag_pngs)} mask diagnostics")
+          f"{len(residmf_pngs)} residual-MF spectra, {len(mask_diag_pngs)} mask diagnostics, "
+          f"{len(band9_pngs)} Band 9 spectra")
     print(f"Open {idx}")
