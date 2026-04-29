@@ -472,6 +472,8 @@ if __name__ == "__main__":
     for cp in b7_line_cubes:
         run_on_cube(cp, params, "B7 per-line")
 
+    # there are no b9 per-line cubes, we just do full cubes
+
     # The 8 full spectral window cubes (FREQ axis)
     full_window_cubes = (
         sorted(glob.glob(os.path.join(BASE, "b3.spw*.cube.I.pbcor.10kms.fits")))

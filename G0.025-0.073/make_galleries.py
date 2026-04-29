@@ -398,6 +398,56 @@ def plot_moment_maps(cube_path, outdir, v_lo=V_LO, v_hi=V_HI,
     return outname
 
 
+def plot_gauss3d_fullwin_mf(mf_path, outdir):
+    """Plot the Gaussian-template matched-filter spectrum for a full spectral
+    window (FREQ axis), with catalog lines annotated at MUBLO v_LSR."""
+    with fits.open(mf_path) as hdul:
+        tbl = hdul[1].data
+        hdr = hdul[1].header
+    freq_hz = tbl["frequency_hz"]
+    flux = tbl["flux"]
+    snr = tbl["snr"]
+    freq_ghz = freq_hz / 1e9
+
+    f_lo = float(np.min(freq_ghz)); f_hi = float(np.max(freq_ghz))
+    doppler = 1.0 - V0 / C_KMS
+    lines_in_range = []
+    for (lbl, rest_ghz, short) in LINE_CATALOG:
+        obs = rest_ghz * doppler
+        if f_lo <= obs <= f_hi:
+            lines_in_range.append((lbl, short, obs))
+
+    base = os.path.basename(mf_path).replace(".fits", "")
+    fig, (ax_f, ax_s) = plt.subplots(2, 1, figsize=(14, 6.5), sharex=True,
+                                     gridspec_kw=dict(hspace=0.04))
+    ax_f.plot(freq_ghz, flux, color="black", lw=0.6, drawstyle="steps-mid")
+    ax_f.axhline(0, color="gray", lw=0.4)
+    ax_f.set_ylabel("Gauss-MF flux")
+    ax_f.set_title(f"{base}   [Gaussian template]\n"
+                   f"N_lines_in_range={len(lines_in_range)}",
+                   fontsize=10)
+
+    ax_s.plot(freq_ghz, snr, color="navy", lw=0.6, drawstyle="steps-mid")
+    ax_s.axhline(0, color="gray", lw=0.4)
+    for thr in (3, 5, 10):
+        ax_s.axhline(thr, color="orange", lw=0.5, ls=":", alpha=0.7)
+        ax_s.axhline(-thr, color="orange", lw=0.5, ls=":", alpha=0.7)
+    ax_s.set_xlabel("frequency (GHz)")
+    ax_s.set_ylabel("Gauss-MF SNR")
+    ymin_f, ymax_f = ax_f.get_ylim()
+    for (lbl, short, obs) in lines_in_range:
+        ax_f.axvline(obs, color="red", lw=0.6, alpha=0.7)
+        ax_s.axvline(obs, color="red", lw=0.6, alpha=0.7)
+        ax_f.text(obs, ymax_f, f" {short}", color="red", fontsize=8,
+                  rotation=90, va="top", ha="left")
+    ax_f.set_xlim(f_lo, f_hi)
+
+    outname = os.path.join(outdir, base + ".png")
+    fig.savefig(outname, dpi=110, bbox_inches="tight")
+    plt.close(fig)
+    return outname
+
+
 def plot_resid_fullwin(mf_path, cube_path, outdir):
     """Plot the residual-template matched-filter spectrum for a full
     spectral window (FREQ axis), with catalog lines annotated at their
@@ -454,7 +504,7 @@ def plot_resid_fullwin(mf_path, cube_path, outdir):
 
 def write_index_html(spectrum_pngs, moment_pngs, residmf_pngs, mask_diag_pngs, outdir,
                       rgb_png=None, rgb_bow_png=None, dmr_png=None, radial_png=None,
-                      band9_pngs=None):
+                      band9_pngs=None, gauss3d_fullwin_pngs=None):
     index = os.path.join(outdir, "index.html")
     with open(index, "w") as fh:
         fh.write("<html><head><title>MUBLO gallery</title>")
@@ -489,10 +539,15 @@ def write_index_html(spectrum_pngs, moment_pngs, residmf_pngs, mask_diag_pngs, o
             for p in mask_diag_pngs:
                 rel = os.path.basename(p)
                 fh.write(f'<section><h3>{rel}</h3><img src="{rel}"/></section>')
-        fh.write("<h2>Full-window matched-filter spectra (8 SPWs, Gaussian template)</h2>")
+        fh.write("<h2>Full-window matched-filter spectra (computed on-the-fly, Gaussian template)</h2>")
         for p in spectrum_pngs:
             rel = os.path.basename(p)
             fh.write(f'<section><h3>{rel}</h3><img src="{rel}"/></section>')
+        if gauss3d_fullwin_pngs:
+            fh.write("<h2>Full-window matched-filter spectra (pre-computed, Gaussian template)</h2>")
+            for p in gauss3d_fullwin_pngs:
+                rel = os.path.basename(p)
+                fh.write(f'<section><h3>{rel}</h3><img src="{rel}"/></section>')
         if band9_pngs:
             fh.write("<h2>Band 9 matched-filter spectra (Gaussian template)</h2>")
             for p in band9_pngs:
@@ -516,6 +571,7 @@ if __name__ == "__main__":
     full_window_cubes = (
         sorted(glob.glob(os.path.join(BASE, "b3.spw*.cube.I.pbcor.10kms.fits")))
         + sorted(glob.glob(os.path.join(BASE, "b7", "*.cube.I.selfcal.pbcor.10kms.fits")))
+        + sorted(glob.glob(os.path.join(BASE, "b9", "*.cube.I.selfcal.pbcor.10kms.fits")))
     )
     print(f"Full-window cubes: {len(full_window_cubes)}")
     spectrum_pngs = []
@@ -524,6 +580,20 @@ if __name__ == "__main__":
         if out:
             spectrum_pngs.append(out)
             print(f"  spectrum -> {os.path.basename(out)}")
+
+    # 1b) Pre-computed Gaussian-template matched-filter spectra
+    gauss3d_mf_files = (
+        sorted(glob.glob(os.path.join(BASE, "b3.spw*.cube.I.pbcor.10kms.gauss3d_fullwin_mf.fits")))
+        + sorted(glob.glob(os.path.join(BASE, "b7", "*.cube.I.selfcal.pbcor.10kms.gauss3d_fullwin_mf.fits")))
+        + sorted(glob.glob(os.path.join(BASE, "b9", "*.cube.I.selfcal.pbcor.10kms.gauss3d_fullwin_mf.fits")))
+    )
+    print(f"Gauss3D fullwin MF files: {len(gauss3d_mf_files)}")
+    gauss3d_fullwin_pngs = []
+    for mf_path in gauss3d_mf_files:
+        out = plot_gauss3d_fullwin_mf(mf_path, GAL)
+        if out:
+            gauss3d_fullwin_pngs.append(out)
+            print(f"  gauss3d_fullwin_mf -> {os.path.basename(out)}")
 
     # 2) Per-line moment maps for all per-line cubes
     line_cubes = []
@@ -592,11 +662,6 @@ if __name__ == "__main__":
     dmr_png = os.path.join(GAL, "MUBLO_data_model_residual.png")
     radial_png = os.path.join(GAL, "MUBLO_radial_profiles.png")
 
-    # Clean up old per-line spectrum PNGs from earlier runs
-    for old in glob.glob(os.path.join(GAL, "*.spectrum.png")):
-        os.remove(old)
-        print(f"  removed stale {os.path.basename(old)}")
-
     # 7) Band 9 matched-filter spectra (if process_band9.py has been run)
     band9_pngs = sorted(glob.glob(os.path.join(GAL, "B9_matched_filter_*.png")))
     print(f"Band 9 matched-filter spectra: {len(band9_pngs)}")
@@ -604,8 +669,11 @@ if __name__ == "__main__":
     idx = write_index_html(spectrum_pngs, moment_pngs, residmf_pngs,
                            mask_diag_pngs, GAL, rgb_png=rgb_png,
                            rgb_bow_png=rgb_bow_png, dmr_png=dmr_png,
-                           radial_png=radial_png, band9_pngs=band9_pngs)
-    print(f"\nWrote {len(spectrum_pngs)} full-window spectra, {len(moment_pngs)} moment panels, "
+                           radial_png=radial_png, band9_pngs=band9_pngs,
+                           gauss3d_fullwin_pngs=gauss3d_fullwin_pngs)
+    print(f"\nWrote {len(spectrum_pngs)} computed full-window spectra, "
+          f"{len(gauss3d_fullwin_pngs)} gauss3d full-window spectra, "
+          f"{len(moment_pngs)} moment panels, "
           f"{len(residmf_pngs)} residual-MF spectra, {len(mask_diag_pngs)} mask diagnostics, "
           f"{len(band9_pngs)} Band 9 spectra")
     print(f"Open {idx}")
