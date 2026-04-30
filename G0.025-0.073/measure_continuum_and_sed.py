@@ -113,15 +113,88 @@ else:
     print(f"  Frequency: {b9_freq:.1f}, Wavelength: {b9_wl:.3f}")
 print()
 
-# Load existing SED data
-print("Loading existing SED data...")
+# Load or create full SED table with multi-wavelength data
+print("Building full SED table...")
 sed_ecsv = 'SED.ecsv'
 if os.path.exists(sed_ecsv):
     ulimtbl = Table.read(sed_ecsv)
-    print(f"  Loaded {len(ulimtbl)} existing SED entries")
+    print(f"  Loaded {len(ulimtbl)} SED entries from {sed_ecsv}")
 else:
-    print(f"  Warning: {sed_ecsv} not found, creating new table")
-    ulimtbl = Table(names=['Wavelength', 'Surface Brightness', 'Beam Area', 'Flux'])
+    print(f"  Creating SED table from notebook data...")
+    # Data from MUBLO_MultiwavelengthCutouts.ipynb - external survey data
+    # These are mostly upper limits from Herschel/Spitzer/VLA/SMA
+    herschelspitzer = {
+        '3.6um': '/orange/adamginsburg/ACES/broadline_sources/G0.025-0.073/SPITZER_stolovy_I1_13368832_0000_6_E8709676_maic.fits',
+        '4.5um': '/orange/adamginsburg/ACES/broadline_sources/G0.025-0.073/SPITZER_stolovy_I2_13368832_0000_6_E8709929_maic.fits',
+        '5.8um': '/orange/adamginsburg/ACES/broadline_sources/G0.025-0.073/SPITZER_stolovy_I3_13368832_0000_6_E8709933_maic.fits',
+        '8.0um': '/orange/adamginsburg/ACES/broadline_sources/G0.025-0.073/SPITZER_stolovy_I4_13368832_0000_6_E8709940_maic.fits',
+        '24um': '/orange/adamginsburg/cmz/mipsgal_24micron_data/gc_mosaic_MIPSGAL_gal.fits',
+        '70um': '/orange/adamginsburg/cmz/herschel/destripe_l000_blue_wgls_rcal.fits',
+        '160um': '/orange/adamginsburg/cmz/herschel/destripe_l000_red_wgls_rcal.fits',
+        '250um': '/orange/adamginsburg/cmz/herschel/destripe_l000_PSW_wgls_rcal.fits',
+        '350um': '/orange/adamginsburg/cmz/herschel/destripe_l000_PMW_wgls_rcal.fits',
+        '500um': '/orange/adamginsburg/cmz/herschel/destripe_l000_PLW_wgls_rcal.fits',
+        '60000um': '/orange/adamginsburg/cmz/xinglu/SgrA_CONT_tclean_nterm2.image.tt0.fits',
+        '200000um': '/orange/adamginsburg/cmz/meerkat/MeerKAT_Galactic_Centre_1284MHz-StokesI.fits'
+    }
+
+    herschelspitzer_resolution = {
+        '3.6um': radio_beam.Beam(2*u.arcsec),
+        '4.5um': radio_beam.Beam(2*u.arcsec),
+        '5.8um': radio_beam.Beam(2*u.arcsec),
+        '8.0um': radio_beam.Beam(2*u.arcsec),
+        '24um': radio_beam.Beam(6*u.arcsec),
+        '70um': radio_beam.Beam(10.7*u.arcsec, 9.7*u.arcsec),
+        '160um': radio_beam.Beam(13.9*u.arcsec, 13.2*u.arcsec),
+        '250um': radio_beam.Beam(23.9*u.arcsec, 22.8*u.arcsec),
+        '350um': radio_beam.Beam(31.3*u.arcsec, 29.3*u.arcsec),
+        '500um': radio_beam.Beam(43.8*u.arcsec, 41.1*u.arcsec),
+    }
+
+    # Try to add radio beams if files exist
+    try:
+        herschelspitzer_resolution['60000um'] = radio_beam.Beam.from_fits_header(fits.getheader('/orange/adamginsburg/cmz/xinglu/SgrA_CONT_tclean_nterm2.image.tt0.fits'))
+    except:
+        pass
+    try:
+        herschelspitzer_resolution['200000um'] = radio_beam.Beam.from_fits_header(fits.getheader('/orange/adamginsburg/cmz/meerkat/MeerKAT_Galactic_Centre_1284MHz-StokesI.fits'))
+    except:
+        pass
+
+    ulimtbl = []
+    for wl, fn in herschelspitzer.items():
+        if not os.path.exists(fn):
+            print(f"    Skipping {wl} (file not found: {fn})")
+            continue
+        try:
+            fh = fits.open(fn)
+            ww = WCS(fh[0].header).celestial
+            xx, yy = np.array(list(map(int, ww.world_to_pixel(coord))))
+            val = fh[0].data[yy, xx]
+            fh.close()
+            if u.Quantity(wl) < 1*u.mm:
+                ulimtbl.append((u.Quantity(wl.strip('um'), u.um), val*u.MJy/u.sr,
+                                herschelspitzer_resolution[wl].sr,
+                                (u.Quantity(val, u.MJy/u.sr)*herschelspitzer_resolution[wl].sr).to(u.Jy)))
+            else:
+                beam = herschelspitzer_resolution[wl]
+                ulimtbl.append([u.Quantity(wl.strip('um'), u.um),
+                                val*u.Jy/beam.sr,
+                                beam.sr,
+                                u.Quantity(val, u.Jy)])
+            print(f"    Added {wl}")
+        except Exception as e:
+            print(f"    Error loading {wl}: {e}")
+
+    # Convert to table
+    if ulimtbl:
+        ulimtbl = Table(rows=ulimtbl, names=['Wavelength', 'Surface Brightness',
+                                             'Beam Area', 'Flux'])
+        ulimtbl.sort('Wavelength')
+        print(f"  Created table with {len(ulimtbl)} entries")
+    else:
+        print(f"  Warning: Could not load external SED data")
+        ulimtbl = Table(names=['Wavelength', 'Surface Brightness', 'Beam Area', 'Flux'])
 
 # Create updated SED plot with new ALMA continuum points
 print("\nCreating updated SED plot...")
