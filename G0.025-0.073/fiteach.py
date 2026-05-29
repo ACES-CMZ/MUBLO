@@ -22,9 +22,10 @@ import pyspeckit
 
 # Define the lines to fit
 lines = {
-    'CS21': 'spw29.cube.I.pbcor.mublo.CS21.fits',
-    'SO2211': 'spw25.cube.I.pbcor.mublo.SO2211.fits',
-    'SO32': 'spw31.cube.I.pbcor.mublo.SO32.fits'
+    'CS21': 'b3.spw29.cube.I.pbcor.mublo.CS21.fits',
+    'SO2211': 'b3.spw25.cube.I.pbcor.mublo.SO2211.fits',
+    'SO32': 'b3.spw31.cube.I.pbcor.mublo.SO32.fits',
+    '12CO32': 'b7.spw31.cube.I.selfcal.pbcor.mublo.12CO32.fits',
 }
 
 # Read the region file once
@@ -52,6 +53,30 @@ for line_name, cube_file in lines.items():
 
     # Convert to km/s for convenience
     vcube = vcube.with_spectral_unit(u.km / u.s)
+
+    # For CO 3-2, identify and mask absorption-contaminated channels
+    fit_mask = None
+    if line_name == '12CO32':
+        print("Identifying clean channels for CO 3-2 (avoiding absorption)...")
+        # Compute mean spectrum to identify absorption
+        mean_spec = vcube.mean(axis=(1, 2))
+        noise = np.nanstd(mean_spec.value)
+
+        # Clean channels: where mean is positive (> 0.5 * noise)
+        # This avoids the absorption feature at higher velocities
+        clean_mask = mean_spec.value > 0.5 * noise
+        clean_indices = np.where(clean_mask)[0]
+
+        if len(clean_indices) > 0:
+            vmin_clean = mean_spec.spectral_axis[clean_indices[0]]
+            vmax_clean = mean_spec.spectral_axis[clean_indices[-1]]
+            print(f"  Clean velocity range: {vmin_clean:.1f} to {vmax_clean:.1f}")
+            print(f"  Using {len(clean_indices)}/{len(mean_spec)} channels")
+
+            # Create velocity slab with just clean channels
+            vcube = vcube.spectral_slab(vmin_clean, vmax_clean)
+        else:
+            print(f"  Warning: No clean channels found, using full range")
 
     # Prepare output arrays for peak (amplitude), centroid (mean), and width (stddev)
     ny, nx = vcube.shape[1], vcube.shape[2]
