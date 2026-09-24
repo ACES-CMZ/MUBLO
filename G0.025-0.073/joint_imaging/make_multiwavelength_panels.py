@@ -345,7 +345,16 @@ def main():
     red, blue = cut(d480r), cut(d212)
     green = 0.5 * (red + blue)
     rgb = np.nan_to_num(np.dstack([red, green, blue]))
-    show(axes[1, 3 - 1], rgb, w212, "", size, rgb=True)
+    ax_rgb = axes[1, 3 - 1]
+    show(ax_rgb, rgb, w212, "", size, rgb=True)
+    # name the two channels in their own colours, so the composite reads
+    # without the caption: red is the 4.8 um band, blue the 2.12 um one
+    for k, (text, colour) in enumerate([("4.8 $\\mu$m", "#ff8a3d"),
+                                        ("2.12 $\\mu$m", "#6fb7ff")]):
+        ax_rgb.text(0.96, 0.94 - 0.105 * k, text, transform=ax_rgb.transAxes,
+                    ha="right", va="top", color=colour, fontsize=FS_LABEL,
+                    zorder=7,
+                    path_effects=[withStroke(linewidth=2.5, foreground="k")])
     nfin = np.isfinite(d480r).sum()
     print("   RGB on the F212N grid, %d of %d reprojected pixels finite; "
           "cut %.1f to %.0f MJy/sr" % (nfin, d480r.size, args.jwst_vmin,
