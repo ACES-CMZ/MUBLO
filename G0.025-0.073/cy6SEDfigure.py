@@ -1,6 +1,9 @@
 """
 Proposal Cycle 6 figure
 """
+import os
+import sys
+
 from astropy import units as u
 import astroquery
 import astroquery.herschel.higal
@@ -10,8 +13,10 @@ from astropy.coordinates import SkyCoord
 from astropy import units as u
 import matplotlib.colors as mcolors
 import numpy as np
+import dust_emissivity
 from astropy.visualization import simple_norm
 from astropy.table import Table
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes, mark_inset
 
 if 'ulimtbl' not in locals():
     ulimtbl = Table.read('/orange/adamginsburg/ACES/broadline_sources/G0.025-0.073/SED.ecsv')
@@ -55,7 +60,7 @@ x1, x2, y1, y2 = 400, 1000, 0.04, 0.6  # subregion of the original image
 
 
 ulwl = ulimtbl['Wavelength']
-ax.plot(ulwl[ulwl < 800*u.um], ulimtbl['Flux'][ulwl < 800*u.um], '+', markerfacecolor='none', markeredgecolor='k')
+ax.plot(ulwl[ulwl < 800*u.um], ulimtbl['Flux'][ulwl < 800*u.um], 'v', markerfacecolor='none', markeredgecolor='k')
 ax.plot(ulwl[ulwl > 1*u.cm], ulimtbl['Flux'][ulwl > 1*u.cm], 'v', markerfacecolor='none', markeredgecolor='k')
 ax.plot(b3wl, b3flx, 's', markeredgecolor='k', markerfacecolor='b')
 ax.plot(b7wl, b7flx, 's', markeredgecolor='k', markerfacecolor='b')
@@ -92,6 +97,66 @@ for tem, ls in zip(temperatures, ('-', '--', '-.', ':')):
                label=f'T={tem} K')#\nN={column.value:0.1e} cm$^{{-2}}$')
 
 
+# The infrared background of the general region, per JWST pixel.  ISO SWS01
+# saw the diffuse Galactic-centre emission in an aperture of 14x20 to 20x33
+# arcsec, so dividing by that aperture gives a surface brightness; multiplying
+# by the solid angle of one JWST pixel gives what a spectrum of uniform
+# background would contribute to a single spaxel, which is what has to be
+# subtracted from, and sets the photon noise on, any point-source measurement.
+# The curve is drawn over the MIRI MRS range alone, 4.93-28.2 um, using the
+# spaxel of whichever MRS channel covers each wavelength.  Continuing it into
+# the NIRSpec IFU (0.1" spaxel) or onto the MIRI imager (0.11" pixel) puts a
+# factor 3.8 step at 5.3 um and a factor 6.2 step at 28 um into the curve,
+# which read as spectral features and are only the pixel area changing.  The
+# SWS grating scan is spiky at the 10% level from order joins and imperfect
+# dark subtraction; a running median takes those out without moving the
+# continuum.
+sys.path.insert(0, os.path.join(
+    '/orange/adamginsburg/ACES/broadline_sources/G0.025-0.073', 'ir_background'))
+import ir_background_spectrum as irb
+from scipy.ndimage import median_filter
+
+#: (upper wavelength [um], spaxel size ["]) for the four MIRI MRS channels;
+#: Ch1 and Ch2 share 0.196".
+JWST_PIXEL = [(11.70, 0.196), (17.98, 0.245), (1e4, 0.273)]
+#: MRS wavelength coverage, the range the background curve is drawn over
+MRS_RANGE = (4.93, 28.2)
+ISO_MEDIAN = 101     # samples; the SWS grid is ~50000 points over 2.4-45 um
+
+
+def jwst_pixel_arcsec(wave_um):
+    """Spaxel size, arcsec, of whichever MRS channel covers each wavelength."""
+    out = np.full(np.shape(wave_um), JWST_PIXEL[-1][1])
+    for hi, pix in JWST_PIXEL[::-1]:
+        out[np.asarray(wave_um) < hi] = pix
+    return out
+
+
+sws = irb.load_sws()
+if sws is None:
+    print("ISO SWS spectrum not found; skipping the background curve")
+else:
+    iso_wave, iso_sb = sws                       # um, MJy/sr
+    iso_sb = median_filter(iso_sb, size=ISO_MEDIAN, mode="nearest")
+    keep = (iso_wave >= MRS_RANGE[0]) & (iso_wave <= MRS_RANGE[1])
+    iso_wave, iso_sb = iso_wave[keep], iso_sb[keep]
+    omega_pix = ((jwst_pixel_arcsec(iso_wave) * u.arcsec) ** 2).to(u.sr).value
+    iso_jy = iso_sb * 1e6 * omega_pix            # MJy/sr -> Jy per pixel
+    ax.plot(iso_wave, iso_jy, color='red', alpha=0.5, linewidth=1.5,
+            zorder=-3)
+    # labelled in place rather than in the legend, which is already four
+    # modified blackbodies long
+    itarg = np.argmin(np.abs(iso_wave - 5.6))
+    ax.annotate('ISO background', xy=(iso_wave[itarg]-0.1, iso_jy[itarg]),
+                xytext=(1.35, 1.5e-3), color='red', ha='center', va='center',
+                fontsize=12, weight='bold',
+                arrowprops=dict(arrowstyle='->', edgecolor='red',
+                                facecolor='red', shrinkB=4,
+                                connectionstyle='arc3,rad=-0.2'))
+    print("ISO background per MRS spaxel: %.3g Jy at 6 um, %.3g at 10 um, "
+          "%.3g at 20 um" % tuple(iso_jy[np.argmin(np.abs(iso_wave - w))]
+                                  for w in (6., 10., 20.)))
+
 #ax.indicate_inset_zoom(axins, edgecolor="black", )
 def mark_inset_behind(parent, inset, loc1, loc2, **kwargs):
     """mark_inset, with the connectors drawn behind the inset.
@@ -116,6 +181,21 @@ def mark_inset_behind(parent, inset, loc1, loc2, **kwargs):
 blah = mark_inset_behind(ax, axins, loc1=3, loc2=2)
 axins.plot(b7wl, b7flx, 's', markeredgecolor='k', markerfacecolor='b')
 axins.plot(b9wl, b9flx, 's', markeredgecolor='k', markerfacecolor='b')
+
+# The ALMA label sits in the inset, where the Band 7 and Band 9 points are
+# resolved from each other, rather than on the main panel where it lands under
+# the legend.  One arrow per point, both from the same text.
+alma_label_xy = (950., 0.52)      # top right corner of the inset
+alma_arrow_from1 = (800., 0.50) # from the left
+alma_arrow_from2 = (950., 0.38) # just below it, so the arrows clear the text
+print("doing the loops...")
+for wl, flx, rad, alma_arrow_from in ((b9wl, b9flx, 0.2, alma_arrow_from1), (b7wl, b7flx, -0.3, alma_arrow_from2)):
+    axins.annotate('', xy=(wl.value, flx.value), xytext=alma_arrow_from,
+                   arrowprops=dict(arrowstyle='->', edgecolor='b',
+                                   facecolor='b', shrinkA=2, shrinkB=5,
+                                   connectionstyle='arc3,rad=%g' % rad))
+axins.text(alma_label_xy[0], alma_label_xy[1], 'ALMA', color='b',
+           ha='right', va='top', weight='bold')
 
 
 ax.loglog();
@@ -198,11 +278,11 @@ miri_wls = np.array([w[0] for w, f in miri_pts]) * u.um
 miri_flx = u.Quantity([f[0] for w, f in miri_pts])
 dots, = pl.plot(miri_wls, miri_flx, 'o')
 
-mirit = pl.text(23, 5e-7, 'JWST MIRI\n(proposed)', color=dots.get_color(),
-                weight='bold', ha='center', fontsize=14, va='center',)
+mirit = pl.text(63, 7e-7, 'JWST MIRI\n(proposed)', color=dots.get_color(),
+                weight='bold', ha='center', fontsize=13, va='center',)
 mirit.set_bbox(dict(facecolor='white', alpha=0.75, edgecolor='none'))
 
-pl.annotate('', xy=(miri_wls[-1].value, miri_flx[-1].value), xytext=(23, 1.2e-6),
+pl.annotate('', xy=(miri_wls[-1].value, miri_flx[-1].value), xytext=(63, 5.2e-6),
             arrowprops=dict(facecolor=dots.get_color(),
                             connectionstyle="arc3,rad=0.2",
                             arrowstyle='->',
@@ -214,7 +294,6 @@ pl.annotate('', xy=(miri_wls[-1].value, miri_flx[-1].value), xytext=(23, 1.2e-6)
 pl.text(300, 50, 'Herschel', color='k', ha='center')
 pl.text(25, 2, 'Spitzer', color='k', ha='center')
 
-pl.text(1e3, 0.25, 'ALMA', color='b', ha='center')
 pl.text(1.5e3, 0.05, 'SMA', color='r', ha='center')
 
 # MIRI MRS: one curve per sub-band, drawn in a single color
@@ -226,10 +305,10 @@ for band in ('CH1 SHORT', 'CH1 MEDIUM', 'CH1 LONG',
     wave, flux = jist_nsigma('jist_MIRI_Medium-Resolution_Spectroscopy.json', band)
     mrs, = pl.plot(wave, flux, linewidth=1, color=mrs_color)
 
-pl.annotate('JWST MRS\n(proposed)', xy=(18, 3e-4), xytext=(1.1, 1.5e-2,),
+pl.annotate('JWST MRS\n(proposed)', xy=(10, 1), xytext=(5, 10),
             color=mrs_color, weight='bold', ha='center', fontsize=14, va='center')
 
-pl.annotate('', xy=(4, 3e-4), xytext=(1, 5e-3,),
+pl.annotate('', xy=(25, 1e-2), xytext=(10, 2,),
             arrowprops=dict(facecolor=mrs_color,
                             connectionstyle="arc3,rad=0.2",
                             arrowstyle='->',
@@ -272,6 +351,8 @@ axins.set_position(Bbox.from_bounds(*new_bounds)
 blah = mark_inset_behind(ax, axins, loc1=3, loc2=4, zorder=-5)
 axins.set_facecolor('white')
 axins.set_zorder(10)
+
+
 
 
 pl.savefig('/orange/adamginsburg/ACES/broadline_sources/G0.025-0.073/SED_with_observed_B9_and_JWST_wide.pdf', bbox_inches='tight')
