@@ -60,8 +60,8 @@ x1, x2, y1, y2 = 400, 1000, 0.04, 0.6  # subregion of the original image
 
 
 ulwl = ulimtbl['Wavelength']
-ax.plot(ulwl[ulwl < 800*u.um], ulimtbl['Flux'][ulwl < 800*u.um], 'v', markerfacecolor='none', markeredgecolor='k')
-ax.plot(ulwl[ulwl > 1*u.cm], ulimtbl['Flux'][ulwl > 1*u.cm], 'v', markerfacecolor='none', markeredgecolor='k')
+#ax.plot(ulwl[ulwl < 800*u.um], ulimtbl['Flux'][ulwl < 800*u.um], 'v', markerfacecolor='none', markeredgecolor='k')
+#ax.plot(ulwl[ulwl > 1*u.cm], ulimtbl['Flux'][ulwl > 1*u.cm], 'v', markerfacecolor='none', markeredgecolor='k')
 ax.plot(b3wl, b3flx, 's', markeredgecolor='k', markerfacecolor='b')
 ax.plot(b7wl, b7flx, 's', markeredgecolor='k', markerfacecolor='b')
 ax.plot(b9wl, b9flx, 's', markeredgecolor='k', markerfacecolor='b')
@@ -197,9 +197,31 @@ for wl, flx, rad, alma_arrow_from in ((b9wl, b9flx, 0.2, alma_arrow_from1), (b7w
 axins.text(alma_label_xy[0], alma_label_xy[1], 'ALMA', color='b',
            ha='right', va='top', weight='bold')
 
+# A third arrow from the same label out to the Band 3 point, which sits on the
+# parent axes rather than in the inset: the tail is given in the inset's data
+# coordinates and the head in the parent's, so both ends track their own axes
+# when the inset is repositioned further down.  annotation_clip=False keeps the
+# arrow drawn where it leaves the inset's bounding box.
+# A ConnectionPatch, not an annotation: it has one end in each set of data
+# coordinates, and it is a child of the INSET, which is the last axes drawn,
+# so the whole arrow lands on top.  An annotation on the parent axes is
+# painted before the inset and disappears under it, and a figure-level artist
+# does not reliably win either.  clip_on is off so the part that leaves the
+# inset's box towards the Band 3 point is still drawn.  Both ends are resolved
+# at draw time, so this survives the inset being repositioned further down.
+from matplotlib.patches import ConnectionPatch
+
+alma_b3_arrow = ConnectionPatch(
+    xyA=(700., 0.56), coordsA=axins.transData,
+    xyB=(b3wl.value, b3flx.value), coordsB=ax.transData,
+    arrowstyle='->', color='b', shrinkA=2, shrinkB=5,
+    connectionstyle='arc3,rad=-0.25', zorder=20)
+axins.add_artist(alma_b3_arrow)
+alma_b3_arrow.set_clip_on(False)
+
 
 ax.loglog();
-ax.axis([1,1e5,5e-4,300]);
+ax.axis([1,1e5,5e-4,200]);
 pl.legend(loc='upper right',);
 ax.set_xlabel(r"Wavelength [$\mu$m]")
 ax.set_ylabel("Flux Density $S_\\nu$ [Jy]")
@@ -291,8 +313,8 @@ pl.annotate('', xy=(miri_wls[-1].value, miri_flx[-1].value), xytext=(63, 5.2e-6)
             ha='left', va='bottom')
 
 
-pl.text(300, 50, 'Herschel', color='k', ha='center')
-pl.text(25, 2, 'Spitzer', color='k', ha='center')
+#pl.text(300, 50, 'Herschel', color='k', ha='center')
+#pl.text(25, 2, 'Spitzer', color='k', ha='center')
 
 pl.text(1.5e3, 0.05, 'SMA', color='r', ha='center')
 
@@ -333,7 +355,7 @@ pl.annotate('', xy=(1.4, 1e-5), xytext=(1.4, 1.2e-6),
                             edgecolor=nirspec_color,),
             ha='left', va='bottom')
 
-pl.axis([0.5,5000,1e-7,250]);
+pl.axis([0.5,5000,1e-7,200]);
 
 from matplotlib.transforms import Bbox
 # AnchoredPositionLocator does not exist in matplotlib (InsetPosition, the
